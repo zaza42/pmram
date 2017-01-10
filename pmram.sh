@@ -104,7 +104,7 @@ profilecopy() {
 	|| profdir="$defprof"/$profile
     echo "Copying profile from $profdir"
     $rsync -avHPx --delete --exclude thirdparties --exclude webappsstore.sqlite \
-	"$profdir"/ profile | $progress >/dev/null
+	--exclude cache "$profdir"/ profile | $progress >/dev/null
     echo -n Unzipping plugins
     for plugin in profile/extensions/*xpi; do
 	[ -f "$plugin" ] || continue
