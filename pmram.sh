@@ -13,16 +13,12 @@ pmdirs="$HOME/local/palemoon /usr/lib/palemoon"
 defprof="$HOME/.moonchild productions/pale moon"
 ramdir=/mnt/pmram
 
-# Open new tab if already running
-if [ -f $ramdir/pm/palemoon ] && [ $(pidof $ramdir/pm/palemoon) ] ;then
-    exec $ramdir/pm/palemoon "$1"
-fi
 
 ##########################
 # Initializing functions #
 ##########################
 
-error() { echo "E: $@" ; umount $ramdir; exit 1; }
+error() { echo "E: $@" ; umount $ramdir 2>/dev/null; exit 1; }
 
 filescheck() {
 # rsync compiled with drop-cache is much better
@@ -43,6 +39,10 @@ which ionice >/dev/null && ionice="ionice -c3" \
 if $sqlite; then
     sqlite=$(which sqlite3)
     [ -z "$sqlite" ] && echo "W: install \`sqlite3\` for compacting files"
+fi
+if $gstreamer; then
+    gstinspect=$(which gst-inspect-1.0)
+    [ -z "$gstinspect" ] && echo "W: install \`gstreamer1.0-tools\` for audio/video playing from ramfs"
 fi
 }
 
@@ -136,20 +136,28 @@ fi
 # Let's go #
 ############
 
+# Open new tab if already running
+if [ -f $ramdir/pm/palemoon ] && [ $(pgrep -f $ramdir/pm/palemoon) ] ; then
+    exec $ramdir/pm/palemoon "$1"
+fi
+# Don't run as 2nd instance
+pidof palemoon >/dev/null && error "another Pale Moon is already running!"
+
+starttime=$(date +%s)
 filescheck
 ramdirmount
 cd $ramdir
 pmcopy
 [ -f pm/omni.ja ] && omniunzip
 [ "$libs" = true ] && libcopy
-[ "$gstreamer" = true ] && gstreamcopy
+[ "$gstinspect" ] && gstreamcopy
 profilecopy
 [ "$sqlite" ] && sqlshrink
 mkdir cache
 export XDG_CACHE_HOME=$ramdir/cache
 cd "$OLDPWD"
 ramdu=$(du -sh $ramdir)
-echo Using ${ramdu%%/*} as ramdisk
+echo Using ${ramdu%%/*} as ramdisk "(generated in $(( $(date +%s) - $starttime )) seconds)"
 
 echo Starting Pale Moon and syncing in every $syncinterval seconds
 TMPDIR=/dev/shm/ TEMP=/dev/shm/ TMP=/dev/shm/ \
