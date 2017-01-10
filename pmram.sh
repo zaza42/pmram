@@ -47,7 +47,7 @@ fi
 }
 
 ramdirmount() {
-    [ ! "`grep mnt/pmram\  /proc/mounts`" = "" ] && umount $ramdir
+    [ ! "`grep $ramdir\  /proc/mounts`" = "" ] && (umount $ramdir || error "$ramdir is busy")
     mount $ramdir || error "create \"/mnt/pmram\" folder add this line to /etc/fstab:
 ramfs		$ramdir	ramfs	user,exec,mode=770,noauto	0 0"
 }
@@ -141,8 +141,8 @@ ramdirmount
 cd $ramdir
 pmcopy
 [ -f pm/omni.ja ] && omniunzip
-[ "$libs" ] && libcopy
-[ "$gstreamer" ] && gstreamcopy
+[ "$libs" = true ] && libcopy
+[ "$gstreamer" = true ] && gstreamcopy
 profilecopy
 [ "$sqlite" ] && sqlshrink
 mkdir cache
