@@ -25,12 +25,16 @@ filescheck() {
 rsyncbin=$(which rsync)
 [ -z "$rsyncbin" ] && error "\`rsync\` not found"
 rsync=$rsyncbin
-$rsyncbin --drop-cache 2>&1|grep -q unknown\ option \
-    && echo "W: it's better to use \`drop-cache\` patch for rsync" \
-    || rsync="$rsyncbin --drop-cache"
+if [ $rsyncbin --drop-cache 2>&1|grep -q unknown\ option 2>/dev/null ]; then
+    echo "W: it's better to use \`drop-cache\` patch for rsync" \
+    m=2
+else
+    rsync="$rsyncbin --drop-cache"
+    m=3
+fi
 # progress
 progress=cat
-which pv >/dev/null && progress="pv -l -i 0.1 -w40"  \
+which pv >/dev/null && progress="pv -l -i 0.1" \
     || echo "W: install \`pv\` for progress bars"
 #ionice
 which ionice >/dev/null && ionice="ionice -c3" \
@@ -48,7 +52,7 @@ fi
 
 ramdirmount() {
     [ ! "`grep $ramdir\  /proc/mounts`" = "" ] && (umount $ramdir || error "$ramdir is busy")
-    mount $ramdir || error "create \"$ramdir\" folder add this line to /etc/fstab:
+    mount $ramdir || error "create \"$ramdir\" folder and add this line to /etc/fstab:
 ramfs		$ramdir	ramfs	user,exec,mode=770,noauto	0 0"
 }
 
@@ -58,14 +62,20 @@ pmcopy() {
     done
     [ ! -d "$pmdir" ] && error "Pale Moon not found in dirs: $pmdirs"
     echo copying palemoon from "$pmdir"
+    fn=$(find "$pmdir" -type f|wc -l)
+    [ "$progress" = cat ] || sfn="-s $((fn*m))"
     $rsync -avHPx --delete --exclude dictionaries \
     --exclude removed-files --exclude distribution \
     --exclude hyphenation \
-    "$pmdir"/* pm/ | $progress >/dev/null
+    "$pmdir"/* pm/ | $progress $sfn >/dev/null
 }
 omniunzip() {
     echo unzipping omni.ja
-    unzip -o pm/omni.ja -d pm/ 2>/dev/null | $progress >/dev/null
+    fn=$(unzip -l pm/omni.ja 2>/dev/null)
+    fn=${fn% files}
+    fn=${fn##* }
+    [ "$progress" = cat ] || sfn="-s $fn"
+    unzip -o pm/omni.ja -d pm/ 2>/dev/null | $progress $sfn >/dev/null
     rm -f pm/omni.ja
 }
 libcopy() {
@@ -75,7 +85,9 @@ libcopy() {
     deplibs=$(ldd $ramdir/pm/*.so|grep '=>'|grep -v "not found"|cut -d" " -f3|sort -u)
     du=$(du -Lch $deplibs|tail -n1|expand)
     echo " (${du%% *})"
-    $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress > /dev/null
+    fn=$(echo "$deplibs"|wc -l)
+    [ ! "$progress" = cat ] && sfn="-s $((fn*m))"
+    $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress $sfn > /dev/null
     ldlibpath=$ramdir/libs
 }
 
@@ -87,14 +99,18 @@ gstreamcopy() {
     echo -n copying gstreamer libs from $gstreamdir
     du=$(du -sh "$gstreamdir"|expand)
     echo " (${du%% *})"
-    $rsync -avHP -L "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress > /dev/null
+    fn=$(find "$gstreamdir" -type f | wc -l)
+    [ "$progress" = cat ] || sfn="-s $((fn*m))"
+    $rsync -avHP -L "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress $sfn > /dev/null
     echo -n resolving gstreamer dependencies...
     deplibs=$(LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH \
 	ldd gstreamer/*|grep '=>'|grep -v -e $ramdir -e "not found" \
-	|cut -d" " -f3|sort -u|tee /tmp/deplips.gst)
+	|cut -d" " -f3|sort -u)
     du=$(du -Lch $deplibs|tail -n1|expand)
     echo "copying (${du%% *})"
-    $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress > /dev/null
+    fn=$(echo "$deplibs"|wc -l)
+    [ ! "$progress" = cat ] && sfn="-s $((fn*m))"
+    $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress $sfn > /dev/null
     export GST_PLUGIN_SYSTEM_PATH=$ramdir/gstreamer/
     export GST_PLUGIN_SYSTEM_PATH_1_0=$ramdir/gstreamer/
     export GST_PLUGIN_PATH=$ramdir/gstreamer/
@@ -112,16 +128,20 @@ profilecopy() {
     [ -z "$profile" ] && error "User profile not found at "$defprof"" \
 	|| profdir="$defprof"/$profile
     echo "Copying profile from $profdir"
+    fn=$(find "$profdir" -type f | wc -l)
+    [ "$progress" = cat ] || sfn="-s $((fn*m))"
     $rsync -avHPx --delete --exclude thirdparties --exclude webappsstore.sqlite \
-	--exclude cache "$profdir"/ profile | $progress >/dev/null
-    echo -n Unzipping plugins
-    for plugin in profile/extensions/*xpi; do
-	[ -f "$plugin" ] || continue
-	echo -n .
-	dirname=${plugin%.xpi}
-	unzip "$plugin" -d "$dirname" >/dev/null && rm -f "$plugin"
-    done
-    echo done
+	--exclude cache "$profdir"/ profile | $progress $sfn >/dev/null
+    if [ $(ls profile/extensions/*xpi 2>/dev/null) ]; then
+	echo -n Unzipping plugins
+	for plugin in profile/extensions/*xpi; do
+	    [ -f "$plugin" ] || continue
+	    echo -n .
+	    dirname=${plugin%.xpi}
+	    unzip "$plugin" -d "$dirname" >/dev/null && rm -f "$plugin"
+	done
+	echo done
+    fi
 }
 sqlshrink() {
     echo -n Shrinking sqlite files
