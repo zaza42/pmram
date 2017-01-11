@@ -48,7 +48,7 @@ fi
 
 ramdirmount() {
     [ ! "`grep $ramdir\  /proc/mounts`" = "" ] && (umount $ramdir || error "$ramdir is busy")
-    mount $ramdir || error "create \"/mnt/pmram\" folder add this line to /etc/fstab:
+    mount $ramdir || error "create \"$ramdir\" folder add this line to /etc/fstab:
 ramfs		$ramdir	ramfs	user,exec,mode=770,noauto	0 0"
 }
 
