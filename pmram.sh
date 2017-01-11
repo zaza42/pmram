@@ -69,14 +69,12 @@ omniunzip() {
     rm -f pm/omni.ja
 }
 libcopy() {
-    echo copying libs
+    echo -n copying libs
     mkdir libs
     lib=""
-    deplibs=$(ldd $ramdir/pm/libxul.so |grep -v -e "not found" -e linux-gate.so \
-        | while read -r line;do
-	    l=${line% *}
-	    echo ${l##* }
-        done )
+    deplibs=$(ldd $ramdir/pm/*.so|grep '=>'|grep -v "not found"|cut -d" " -f3|sort -u)
+    du=$(du -Lch $deplibs|tail -n1|expand)
+    echo " (${du%% *})"
     $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress > /dev/null
     ldlibpath=$ramdir/libs
 }
@@ -86,9 +84,14 @@ gstreamcopy() {
 	[ -f "$gstreamdir/libgstcoreelements.so" ] && break
     done
     [ ! -d "$gstreamdir" ] && error "gstreamer not found in dirs: $gstreamdirs"
-    echo copying gstreamer libs from $gstreamdir
+    echo -n copying gstreamer libs from $gstreamdir
+    du=$(du -sh "$gstreamdir"|expand)
+    echo " (${du%% *})"
     $rsync -avHP -L "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress > /dev/null
-    deplibs=$(ldd gstreamer/*|grep '=>'|grep -v $ramdir|cut -d" " -f3|sort -u)
+    echo -n resolving gstreamer dependencies...
+    deplibs=$(LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH ldd gstreamer/*|grep '=>'|grep -v -e $ramdir -e "not found"|cut -d" " -f3|sort -u|tee /tmp/deplips.gst)
+    du=$(du -Lch $deplibs|tail -n1|expand)
+    echo "copying (${du%% *})"
     $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress > /dev/null
     export GST_PLUGIN_SYSTEM_PATH=$ramdir/gstreamer/
     export GST_PLUGIN_SYSTEM_PATH_1_0=$ramdir/gstreamer/
@@ -165,7 +168,8 @@ echo Using ${ramdu%%/*} as ramdisk "(generated in $(( $(date +%s) - $starttime )
 
 echo Starting Pale Moon and syncing in every $syncinterval seconds
 TMPDIR=/dev/shm/ TEMP=/dev/shm/ TMP=/dev/shm/ \
-    LD_LIBRARY_PATH=$ldlibpath $ramdir/pm/palemoon --profile $ramdir/profile $1 &
+    LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH \
+    $ramdir/pm/palemoon --profile $ramdir/profile $1 &
 #syncing profile in background
 (while :;do
     sleep $syncinterval
