@@ -56,7 +56,7 @@ pmcopy() {
     for pmdir in $pmdirs; do
 	[ -f "$pmdir/palemoon" ] && break
     done
-    [ -z "$pmdir" ] && error "Pale Moon not found in dirs: $pmdirs"
+    [ -d "$pmdir" ] && error "Pale Moon not found in dirs: $pmdirs"
     echo copying palemoon from "$pmdir"
     $rsync -avHPx --delete --exclude dictionaries \
     --exclude removed-files --exclude distribution \
@@ -85,7 +85,7 @@ gstreamcopy() {
     for gstreamdir in $gstreamdirs; do
 	[ -f "$gstreamdir/libgstcoreelements.so" ] && break
     done
-    [ -z "$gstreamdir" ] && error "gstreamer not found in dirs: $gstreamdirs"
+    [ -d "$gstreamdir" ] && error "gstreamer not found in dirs: $gstreamdirs"
     echo copying gstreamer libs from $gstreamdir
     $rsync -avHP -L "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress > /dev/null
     deplibs=$(ldd gstreamer/*|grep '=>'|grep -v $ramdir|cut -d" " -f3|sort -u)
