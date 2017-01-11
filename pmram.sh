@@ -9,7 +9,7 @@ libs=true         # copy all dependencies to ramfs
 sqlshrink=true    # shrink *.sqlite files before start pm
 gstreamer=true    # copy all dependencies for audio/video playing
 gstreamdirs="/usr/lib/x86_64-linux-gnu/gstreamer-1.0 /usr/lib/i386-linux-gnu/gstreamer-1.0"
-pmdirs="$HOME/local/palemoon /usr/lib/palemoon"
+pmdirs="$HOME/local/palemoon /usr/lib/palemoon /opt/palemoon"
 defprof="$HOME/.moonchild productions/pale moon"
 ramdir=/mnt/pmram
 
