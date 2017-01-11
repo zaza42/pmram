@@ -89,7 +89,9 @@ gstreamcopy() {
     echo " (${du%% *})"
     $rsync -avHP -L "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress > /dev/null
     echo -n resolving gstreamer dependencies...
-    deplibs=$(LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH ldd gstreamer/*|grep '=>'|grep -v -e $ramdir -e "not found"|cut -d" " -f3|sort -u|tee /tmp/deplips.gst)
+    deplibs=$(LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH \
+	ldd gstreamer/*|grep '=>'|grep -v -e $ramdir -e "not found" \
+	|cut -d" " -f3|sort -u|tee /tmp/deplips.gst)
     du=$(du -Lch $deplibs|tail -n1|expand)
     echo "copying (${du%% *})"
     $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress > /dev/null
@@ -99,10 +101,10 @@ gstreamcopy() {
     export GST_REGISTRY=$ramdir/gst10reg.bin
     export GST_REGISTRY_1_0=$ramdir/gst10reg.bin
     echo -n generating gstreamer registry...
-    gst-inspect-1.0 >/dev/null
+    LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH gst-inspect-1.0 >/dev/null
     echo done
-    GST_REGISTRY_FORK=no
-    GST_REGISTRY_UPDATE=no
+    export GST_REGISTRY_FORK=no
+    export GST_REGISTRY_UPDATE=no
 }
 
 profilecopy() {
