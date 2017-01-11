@@ -83,7 +83,7 @@ libcopy() {
 
 gstreamcopy() {
     for gstreamdir in $gstreamdirs; do
-	[ -f "$gstreamdir/palemoon" ] && break
+	[ -f "$gstreamdir/libgstcoreelements.so" ] && break
     done
     [ -z "$gstreamdir" ] && error "gstreamer not found in dirs: $gstreamdirs"
     echo copying gstreamer libs from $gstreamdir
