@@ -25,8 +25,8 @@ filescheck() {
 rsyncbin=$(which rsync)
 [ -z "$rsyncbin" ] && error "\`rsync\` not found"
 rsync=$rsyncbin
-if [ $rsyncbin --drop-cache 2>&1|grep -q unknown\ option 2>/dev/null ]; then
-    echo "W: it's better to use \`drop-cache\` patch for rsync" \
+if $rsyncbin --drop-cache 2>&1|grep -q unknown\ option ; then
+    echo "W: it's better to use \`drop-cache\` patch for rsync"
     m=2
 else
     rsync="$rsyncbin --drop-cache"
