@@ -8,7 +8,7 @@ syncinterval=360  # sync every XX seconds
 libs=true         # copy all dependencies to ramfs
 sqlshrink=true    # shrink *.sqlite files before start pm
 gstreamer=true    # copy all dependencies for audio/video playing
-gstreamdir="/usr/lib/i386-linux-gnu/gstreamer-1.0"
+gstreamdirs="/usr/lib/x86_64-linux-gnu/gstreamer-1.0 /usr/lib/i386-linux-gnu/gstreamer-1.0"
 pmdirs="$HOME/local/palemoon /usr/lib/palemoon"
 defprof="$HOME/.moonchild productions/pale moon"
 ramdir=/mnt/pmram
@@ -53,8 +53,8 @@ ramfs		$ramdir	ramfs	user,exec,mode=770,noauto	0 0"
 }
 
 pmcopy() {
-    for dir in $pmdirs; do
-	[ -f "$dir/palemoon" ] && pmdir="$dir" && break
+    for pmdir in $pmdirs; do
+	[ -f "$pmdir/palemoon" ] && break
     done
     [ -z "$pmdir" ] && error "Pale Moon not found in dirs: $pmdirs"
     echo copying palemoon from "$pmdir"
@@ -82,7 +82,11 @@ libcopy() {
 }
 
 gstreamcopy() {
-    echo copying gstreamer libs
+    for gstreamdir in $gstreamdirs; do
+	[ -f "$gstreamdir/palemoon" ] && break
+    done
+    [ -z "$gstreamdir" ] && error "gstreamer not found in dirs: $gstreamdirs"
+    echo copying gstreamer libs from $gstreamdir
     $rsync -avHP -L "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress > /dev/null
     deplibs=$(ldd gstreamer/*|grep '=>'|grep -v $ramdir|cut -d" " -f3|sort -u)
     $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress > /dev/null
@@ -177,7 +181,7 @@ kill -9 $!
 echo "Pale Moon has stopped."
 echo -n "Syncing and cleaning up"
 pmsync force
-fuser -km /mnt/pmram/libs/ >/dev/null 2>&1
+fuser -km $ramdir/ >/dev/null 2>&1
 umount $ramdir
 wait
 echo done
