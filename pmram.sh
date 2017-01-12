@@ -4,7 +4,7 @@
 # Use palemoon in ramdisk with syncing
 #
 
-syncinterval=30  # sync every XX seconds
+syncinterval=360  # sync every XX seconds
 libs=true         # copy all dependencies to ramfs
 sqlshrink=true    # shrink *.sqlite files before start pm
 gstreamer=true    # copy all dependencies for audio/video playing
