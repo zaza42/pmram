@@ -128,16 +128,14 @@ profilecopy() {
     [ "$progress" = cat ] || sfn="-s $((fn-1))"
     $rsync --delete --exclude thirdparties --exclude webappsstore.sqlite \
 	--exclude cache "$profdir"/ profile | $progress $sfn >/dev/null
-    if [ "$(ls profile/extensions/*xpi 2>/dev/null)" ]; then
-	echo -n Unzipping plugins
-	for plugin in profile/extensions/*xpi; do
-	    [ -f "$plugin" ] || continue
-	    echo -n .
-	    dirname=${plugin%.xpi}
-	    unzip "$plugin" -d "$dirname" >/dev/null && rm -f "$plugin"
-	done
-	echo done
-    fi
+    echo -n Unzipping plugins
+    for plugin in profile/extensions/*xpi; do
+        [ -f "$plugin" ] || continue
+        echo -n .
+        dirname=${plugin%.xpi}
+        unzip "$plugin" -d "$dirname" >/dev/null && rm -f "$plugin"
+    done
+    echo done
 }
 sqlshrink() {
     echo -n Shrinking sqlite files
@@ -153,7 +151,8 @@ pmsync() {
 if  [ "$1" = "force" ] || [ $ramdir/profile/places.sqlite -nt "$profdir"/places.sqlite ] ; then
     $ionice nice -n10 $rsync --delete --exclude webappsstore.sqlite \
 	--exclude indexedDB --exclude thirdparties --exclude cache \
-	$ramdir/profile/ "$profdir"/ 2>/dev/null | xargs -I {} echo -n .
+	--exclude lock \
+	$ramdir/profile/ "$profdir"/ | xargs -I {} echo -n .
 fi
 }
 
