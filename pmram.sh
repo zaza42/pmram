@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# PMram v1.0
+# PMram v1.1
 # Use palemoon in ramdisk with syncing
 #
 
@@ -24,14 +24,10 @@ filescheck() {
 # rsync compiled with drop-cache is much better
 rsyncbin=$(which rsync)
 [ -z "$rsyncbin" ] && error "\`rsync\` not found"
-rsync=$rsyncbin
-if $rsyncbin --drop-cache 2>&1|grep -q unknown\ option ; then
-    echo "W: it's better to use \`drop-cache\` patch for rsync"
-    m=2
-else
-    rsync="$rsyncbin --drop-cache"
-    m=3
-fi
+rsync="$rsyncbin -L -a --info=name"
+$rsyncbin --drop-cache 2>&1|grep -q unknown\ option \
+    && echo "W: it's better to use \`drop-cache\` patch for rsync" \
+    || rsync="$rsync --drop-cache"
 # progress
 progress=cat
 which pv >/dev/null && progress="pv -l -i 0.1" \
@@ -62,9 +58,9 @@ pmcopy() {
     done
     [ ! -d "$pmdir" ] && error "Pale Moon not found in dirs: $pmdirs"
     echo copying palemoon from "$pmdir"
-    fn=$(find "$pmdir" -type f|wc -l)
-    [ "$progress" = cat ] || sfn="-s $((fn*m))"
-    $rsync -avHPx --delete --exclude dictionaries \
+    fn=$(find "$pmdir" ! -path $pmdir/dictionaries/'*' ! -name dictionaries|wc -l)
+    [ "$progress" = cat ] || sfn="-s $((fn-1))"
+    $rsync --delete --exclude dictionaries \
     --exclude removed-files --exclude distribution \
     --exclude hyphenation \
     "$pmdir"/* pm/ | $progress $sfn >/dev/null
@@ -86,8 +82,8 @@ libcopy() {
     du=$(du -Lch $deplibs|tail -n1|expand)
     echo " (${du%% *})"
     fn=$(echo "$deplibs"|wc -l)
-    [ ! "$progress" = cat ] && sfn="-s $((fn*m))"
-    $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress $sfn > /dev/null
+    [ ! "$progress" = cat ] && sfn="-s $fn"
+    $rsync $deplibs libs/ 2>/dev/null | $progress $sfn > /dev/null
     ldlibpath=$ramdir/libs
 }
 
@@ -99,9 +95,9 @@ gstreamcopy() {
     echo -n copying gstreamer libs from $gstreamdir
     du=$(du -sh "$gstreamdir"|expand)
     echo " (${du%% *})"
-    fn=$(find "$gstreamdir" -type f | wc -l)
-    [ "$progress" = cat ] || sfn="-s $((fn*m))"
-    $rsync -avHP -L "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress $sfn > /dev/null
+    fn=$(find "$gstreamdir" | wc -l)
+    [ "$progress" = cat ] || sfn="-s $((fn-1))"
+    $rsync "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress $sfn > /dev/null
     echo -n resolving gstreamer dependencies...
     deplibs=$(LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH \
 	ldd gstreamer/*|grep '=>'|grep -v -e $ramdir -e "not found" \
@@ -109,8 +105,8 @@ gstreamcopy() {
     du=$(du -Lch $deplibs|tail -n1|expand)
     echo "copying (${du%% *})"
     fn=$(echo "$deplibs"|wc -l)
-    [ ! "$progress" = cat ] && sfn="-s $((fn*m))"
-    $rsync -avHP -L $deplibs libs/ 2>/dev/null | $progress $sfn > /dev/null
+    [ ! "$progress" = cat ] && sfn="-s $((fn-1))"
+    $rsync $deplibs libs/ 2>/dev/null | $progress $sfn > /dev/null
     export GST_PLUGIN_SYSTEM_PATH=$ramdir/gstreamer/
     export GST_PLUGIN_SYSTEM_PATH_1_0=$ramdir/gstreamer/
     export GST_PLUGIN_PATH=$ramdir/gstreamer/
@@ -128,9 +124,9 @@ profilecopy() {
     [ -z "$profile" ] && error "User profile not found at "$defprof"" \
 	|| profdir="$defprof"/$profile
     echo "Copying profile from $profdir"
-    fn=$(find "$profdir" -type f | wc -l)
-    [ "$progress" = cat ] || sfn="-s $((fn*m))"
-    $rsync -avHPx --delete --exclude thirdparties --exclude webappsstore.sqlite \
+    fn=$(find "$profdir" | wc -l)
+    [ "$progress" = cat ] || sfn="-s $((fn-1))"
+    $rsync --delete --exclude thirdparties --exclude webappsstore.sqlite \
 	--exclude cache "$profdir"/ profile | $progress $sfn >/dev/null
     if [ $(ls profile/extensions/*xpi 2>/dev/null) ]; then
 	echo -n Unzipping plugins
@@ -155,7 +151,7 @@ sqlshrink() {
 
 pmsync() {
 if  [ "$1" = "force" ] || [ $ramdir/profile/places.sqlite -nt "$profdir"/places.sqlite ] ; then
-    $ionice nice -n10 $rsync -avHPx --delete --exclude webappsstore.sqlite \
+    $ionice nice -n10 $rsync --delete --exclude webappsstore.sqlite \
 	--exclude indexedDB --exclude thirdparties --exclude cache \
 	$ramdir/profile/ "$profdir"/ 2>/dev/null | xargs -I {} echo -n .
 fi
