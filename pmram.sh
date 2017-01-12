@@ -100,7 +100,7 @@ gstreamcopy() {
     $rsync "$gstreamdir"/ gstreamer/ 2>/dev/null | $progress $sfn > /dev/null
     echo -n resolving gstreamer dependencies...
     deplibs=$(LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH \
-	ldd gstreamer/*|grep '=>'|grep -v -e $ramdir -e "not found" \
+	ldd gstreamer/*.so|grep '=>'|grep -v -e $ramdir -e "not found" \
 	|cut -d" " -f3|sort -u)
     du=$(du -Lch $deplibs|tail -n1|expand)
     echo "copying (${du%% *})"
