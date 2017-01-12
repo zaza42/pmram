@@ -4,7 +4,7 @@
 # Use palemoon in ramdisk with syncing
 #
 
-syncinterval=360  # sync every XX seconds
+syncinterval=30  # sync every XX seconds
 libs=true         # copy all dependencies to ramfs
 sqlshrink=true    # shrink *.sqlite files before start pm
 gstreamer=true    # copy all dependencies for audio/video playing
@@ -128,7 +128,7 @@ profilecopy() {
     [ "$progress" = cat ] || sfn="-s $((fn-1))"
     $rsync --delete --exclude thirdparties --exclude webappsstore.sqlite \
 	--exclude cache "$profdir"/ profile | $progress $sfn >/dev/null
-    if [ $(ls profile/extensions/*xpi 2>/dev/null) ]; then
+    if [ "$(ls profile/extensions/*xpi 2>/dev/null)" ]; then
 	echo -n Unzipping plugins
 	for plugin in profile/extensions/*xpi; do
 	    [ -f "$plugin" ] || continue
