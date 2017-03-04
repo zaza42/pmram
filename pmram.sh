@@ -1,26 +1,37 @@
 #!/bin/sh
 #
-# PMram v1.1
+# PMram v1.3
 # Use palemoon in ramdisk with syncing
 #
 
 syncinterval=360  # sync every XX seconds
 libs=true         # copy all dependencies to ramfs
 sqlshrink=true    # shrink *.sqlite files before start pm
-gstreamer=true    # copy all dependencies for audio/video playing
-gstreamdirs="/usr/lib/x86_64-linux-gnu/gstreamer-1.0 /usr/lib/i386-linux-gnu/gstreamer-1.0"
+#gstreamer=true    # copy all dependencies for audio/video playing
+#gstreamdirs="/usr/lib/x86_64-linux-gnu/gstreamer-1.0 /usr/lib/i386-linux-gnu/gstreamer-1.0"
 pmdirs="$HOME/local/palemoon /usr/lib/palemoon /opt/palemoon"
 defprof="$HOME/.moonchild productions/pale moon"
 ramdir=/mnt/pmram
-
+symlinklibs="/mnt/palemoon/libs"
+tarfile="$defprof/pmram.tar.lz4"
 
 ##########################
 # Initializing functions #
 ##########################
 
-error() { echo "E: $@" ; umount $ramdir 2>/dev/null; exit 1; }
+profile=$(ls -1 "$defprof"/|grep -m1 default$)
+[ -z "$profile" ] && error "User profile not found at $defprof" \
+    || profdir="$defprof"/$profile
+
+for pmdir in $pmdirs; do
+	[ -f "$pmdir/palemoon" ] && break
+done
+[ ! -d "$pmdir" ] && error "Pale Moon not found in dirs: $pmdirs"
+
+error() { echo "E: $*" ; umount $ramdir 2>/dev/null; exit 1; }
 
 filescheck() {
+which unzip >/dev/null || error "\`unzip\` not found"
 # rsync compiled with drop-cache is much better
 rsyncbin=$(which rsync)
 [ -z "$rsyncbin" ] && error "\`rsync\` not found"
@@ -30,20 +41,22 @@ $rsyncbin --drop-cache 2>&1|grep -q unknown\ option \
     || rsync="$rsync --drop-cache"
 # progress
 progress=cat
-which pv >/dev/null && progress="pv -l -i 0.1" \
-    || echo "W: install \`pv\` for progress bars"
+which pv >/dev/null && progress="pv -lptb -w 70 -i 0.1" && progressb="pv -ptb -w 70 -i 0.1" \
+    || error "E: install \`pv\` for progress bars"
 #ionice
 which ionice >/dev/null && ionice="ionice -c3" \
     || echo "W: install \`ionice\` for smoother background syncing"
 #sqlite
-if $sqlite; then
+if [ "$sqlshrink" = "true" ]; then
     sqlite=$(which sqlite3)
     [ -z "$sqlite" ] && echo "W: install \`sqlite3\` for compacting files"
 fi
-if $gstreamer; then
+if [ "$gstreamer" = "true" ]; then
     gstinspect=$(which gst-inspect-1.0)
     [ -z "$gstinspect" ] && echo "W: install \`gstreamer1.0-tools\` for audio/video playing from ramfs"
 fi
+lz4bin=$(which lz4)
+[ -z "$lz4bin" ] && error "\`lz4\` not found"
 }
 
 ramdirmount() {
@@ -53,17 +66,24 @@ ramfs		$ramdir	ramfs	user,exec,mode=770,noauto	0 0"
 }
 
 pmcopy() {
-    for pmdir in $pmdirs; do
-	[ -f "$pmdir/palemoon" ] && break
-    done
-    [ ! -d "$pmdir" ] && error "Pale Moon not found in dirs: $pmdirs"
-    echo copying palemoon from "$pmdir"
-    fn=$(find "$pmdir" ! -path $pmdir/dictionaries/'*' ! -name dictionaries|wc -l)
+    echo copy palemoon from "$pmdir"
+    fn=$(find "$pmdir"/ ! -path $pmdir/dictionaries/'*' ! -name dictionaries|wc -l)
     [ "$progress" = cat ] || sfn="-s $((fn-1))"
     $rsync --delete --exclude dictionaries \
     --exclude removed-files --exclude distribution \
     --exclude hyphenation \
     "$pmdir"/* pm/ | $progress $sfn >/dev/null
+}
+symlinklibs() {
+    echo -n symlinking 3 libs to another ramdisk
+    for lib in libnss3.so libnssutil3.so libssl3.so; do
+	if [ -f "$symlinklibs/$lib" ]; then
+	    rm -f pm/$lib
+	    ln -s $symlinklibs/$lib pm/
+	    echo -n .
+	fi
+    done
+    echo done
 }
 omniunzip() {
     echo unzipping omni.ja
@@ -73,18 +93,19 @@ omniunzip() {
     [ "$progress" = cat ] || sfn="-s $fn"
     unzip -o pm/omni.ja -d pm/ 2>/dev/null | $progress $sfn >/dev/null
     rm -f pm/omni.ja
+    rm -rf pm/hyphenation
 }
 libcopy() {
-    echo -n copying libs
+    echo -n copy libs
     mkdir libs
     lib=""
-    deplibs=$(ldd $ramdir/pm/*.so|grep '=>'|grep -v "not found"|cut -d" " -f3|sort -u)
+    deplibs=$(ldd $ramdir/pm/*.so|grep '=>'|grep -v "not found"|cut -d" " -f3 \
+	    |grep -v ^/mnt |sort -u)
     du=$(du -Lch $deplibs|tail -n1|expand)
     echo " (${du%% *})"
     fn=$(echo "$deplibs"|wc -l)
     [ ! "$progress" = cat ] && sfn="-s $fn"
     $rsync $deplibs libs/ 2>/dev/null | $progress $sfn > /dev/null
-    ldlibpath=$ramdir/libs
 }
 
 gstreamcopy() {
@@ -92,7 +113,7 @@ gstreamcopy() {
 	[ -f "$gstreamdir/libgstcoreelements.so" ] && break
     done
     [ ! -d "$gstreamdir" ] && error "gstreamer not found in dirs: $gstreamdirs"
-    echo -n copying gstreamer libs from $gstreamdir
+    echo -n copy gstreamer libs from $gstreamdir
     du=$(du -sh "$gstreamdir"|expand)
     echo " (${du%% *})"
     fn=$(find "$gstreamdir" | wc -l)
@@ -103,7 +124,7 @@ gstreamcopy() {
 	ldd gstreamer/*.so|grep '=>'|grep -v -e $ramdir -e "not found" \
 	|cut -d" " -f3|sort -u)
     du=$(du -Lch $deplibs|tail -n1|expand)
-    echo "copying (${du%% *})"
+    echo "copy (${du%% *})"
     fn=$(echo "$deplibs"|wc -l)
     [ ! "$progress" = cat ] && sfn="-s $((fn-1))"
     $rsync $deplibs libs/ 2>/dev/null | $progress $sfn > /dev/null
@@ -120,22 +141,22 @@ gstreamcopy() {
 }
 
 profilecopy() {
-    profile=$(ls -1 "$defprof"/|grep -m1 default$)
-    [ -z "$profile" ] && error "User profile not found at "$defprof"" \
-	|| profdir="$defprof"/$profile
-    echo "Copying profile from $profdir"
-    fn=$(find "$profdir" | wc -l)
+#    profile=$(ls -1 "$defprof"/|grep -m1 default$)
+#    [ -z "$profile" ] && error "User profile not found at "$defprof"" \
+#	|| profdir="$defprof"/$profile
+    echo "Copy profile from $profdir"
+    fn=$(find "$profdir" ! -name lock | wc -l)
     [ "$progress" = cat ] || sfn="-s $((fn-1))"
-    $rsync --delete --exclude thirdparties --exclude webappsstore.sqlite \
-	--exclude cache "$profdir"/ profile | $progress $sfn >/dev/null
-    echo -n Unzipping plugins
+    $rsync --safe-links --delete --exclude thirdparties --exclude webappsstore.sqlite \
+	--exclude cache --exclude lock "$profdir"/ profile | $progress $sfn >/dev/null
+}
+extunzip(){
     for plugin in profile/extensions/*xpi; do
         [ -f "$plugin" ] || continue
-        echo -n .
+	echo "Unzipping plugin: ${plugin##*/}"
         dirname=${plugin%.xpi}
         unzip "$plugin" -d "$dirname" >/dev/null && rm -f "$plugin"
     done
-    echo done
 }
 sqlshrink() {
     echo -n Shrinking sqlite files
@@ -171,14 +192,29 @@ starttime=$(date +%s)
 filescheck
 ramdirmount
 cd $ramdir
-pmcopy
-[ -f pm/omni.ja ] && omniunzip
-[ "$libs" = true ] && libcopy
-[ "$gstinspect" ] && gstreamcopy
-profilecopy
+if [ -f "$tarfile" ] && [ $(stat -c "%Y" "$tarfile") -gt $(stat -c "%Y" "$profdir") ] \
+&& [ ! "$1" = "f" ] ; then
+    fn=$(stat -c %s "$tarfile")
+    $progressb "$tarfile" -s $fn -c -N tar \
+	| $lz4bin -d | $progressb -s $(cat "${tarfile}.size") -c -N unlz4 | tar xf - 2>/dev/null
+fi
+if [ ! "$(stat -c "%Y" $pmdir/palemoon-bin)" = "$(stat -c "%Y" pm/palemoon-bin)" ];then
+    pmcopy
+    [ -f pm/omni.ja ] && omniunzip
+    [ "$symlinklibs" ] && symlinklibs
+    [ "$libs" = true ] && libcopy
+    [ "$gstinspect" ] && gstreamcopy
+    profilecopy
+fi
+ldlibpath=$ramdir/libs
+extunzip
 [ "$sqlite" ] && sqlshrink
-mkdir cache
-export XDG_CACHE_HOME=$ramdir/cache
+
+if [ -z "$XDG_CACHE_HOME" ]; then
+    mkdir cache 2>/dev/null
+    export XDG_CACHE_HOME=$ramdir/cache
+fi
+
 cd "$OLDPWD"
 ramdu=$(du -sh $ramdir)
 echo Using ${ramdu%%/*} as ramdisk "(generated in $(( $(date +%s) - $starttime )) seconds)"
@@ -187,6 +223,7 @@ echo Starting Pale Moon and syncing in every $syncinterval seconds
 TMPDIR=/dev/shm/ TEMP=/dev/shm/ TMP=/dev/shm/ \
     LD_LIBRARY_PATH=$ldlibpath:$LD_LIBRARY_PATH \
     $ramdir/pm/palemoon --profile $ramdir/profile $1 &
+pmpid=$!
 #syncing profile in background
 (while :;do
     sleep $syncinterval
@@ -194,15 +231,30 @@ TMPDIR=/dev/shm/ TEMP=/dev/shm/ TMP=/dev/shm/ \
     pmsync
     echo done
 done) &
-jobs
+jobs -l
+#kill sleeploop and palemoon when pressing ctr-c
 trap "kill -9 $!;killall palemoon" HUP INT TERM
-wait %1
+#wait exits with signal 128 when palemoon get SIGSTOP, so ignore it
+#until wait %1; do : ;done
+while [ -d /proc/$pmpid ]; do wait %1;done
 kill -9 $!
 
 echo "Pale Moon has stopped."
-echo -n "Syncing and cleaning up"
-pmsync force
-fuser -km $ramdir/ >/dev/null 2>&1
+#echo -n "Syncing and cleaning up"
+#pmsync force
+#echo done
+if [ -n "$tarfile" ];then
+    cd $ramdir
+    fn=$(du -sb . | cut -f1 )
+#    sfn="-s $fn -N tar"
+    tar c . | $progressb -c -s $fn -N tar | $lz4bin | $progressb -c -s $fn -N tar.lz4 > "$tarfile"
+    echo $fn > "${tarfile}.size"
+    #|$progress $sfn >/dev/null
+#    fn=$(du -sb .|cut -f1)
+#    tar cf - . | pv -i 0.1 -w -s $fn | lz4 > "$tarfile"
+    cd "$OLDPWD"
+fi
+fuser -km $ramdir/ >/dev/null 2>&1 && sleep 1
 umount $ramdir
 wait
-echo done
+echo finished
